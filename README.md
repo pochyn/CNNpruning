@@ -1,6 +1,6 @@
 # CNNpruning
 
-Five layerd CNN trained on MNIST datased.  
+Five layerd CNN trained on MNIST dataset.  
 Layer sizes are 1000 1000 500 200 10  
   
   
