@@ -81,7 +81,6 @@ def weight_pruning(sess, sparsity):
   """weight pruning"""
   #get all trained variables
   all_variables = tf.global_variables()
-  print(all_variables)
   all_values = sess.run(all_variables)
 
   for var, val in zip(all_variables, all_values):
@@ -139,14 +138,6 @@ def l2_pruning(sess, sparsity):
               initial = tf.reshape(matrix, [x, y])
               tf.assign(var, initial)
 
-def get_mean(batch):
-    i = 0
-    probs = []
-    while i < len(batch):
-        probs.append(max(batch[i]))
-        i += 1
-    return np.mean(probs)
-
 # training on mnist dataset when run first time
 def train(mnist, accuracy, keep_prob, train_step, x, y_):
     for i in range(20000):
@@ -168,25 +159,11 @@ def train(mnist, accuracy, keep_prob, train_step, x, y_):
 
 
 # create adversarial and reevaluate with model
-def eval(sess, mnist, keep_prob, x, y_conv, y_, pruning):
-    final = []
-    sparsities = [0, 25, 50, 60, 70, 80, 90, 95, 97, 99]
-
-    for sparsity in sparsities:
-
-        if pruning == "weight":
-            weight_pruning(sess, sparsity)
-        if pruning == "l2":
-            l2_pruning(sess, sparsity)
-
-        y = tf.nn.softmax(y_conv)
-        eval_data = mnist.test.images
-        eval_labels = np.asarray(mnist.test.labels, dtype=np.int32)
-        prob = y.eval(feed_dict={x: eval_data, y_: eval_labels, keep_prob: 1.0})
-
-        final.append((sparsity, prob))
-
-    return final
+def eval(mnist, keep_prob, x, y_, accuracy):
+    eval_data = mnist.test.images
+    eval_labels = np.asarray(mnist.test.labels, dtype=np.int32)
+    prob = accuracy.eval(feed_dict={x: eval_data, y_: eval_labels, keep_prob: 1.0})
+    return prob
 
 
 def main(_):
@@ -218,21 +195,28 @@ def main(_):
   train_writer = tf.summary.FileWriter(graph_location)
   train_writer.add_graph(tf.get_default_graph())
 
-  # creating new session
-  sess = tf.InteractiveSession()
-  sess.run(tf.global_variables_initializer())
-
   #train(mnist, accuracy, keep_prob, train_step, x, y_)
 
-  all_variables = tf.global_variables()
-  print(len(all_variables))
+  prunings = ['weight', 'l2']
+  weight_pruning_probs = []
+  l2_pruning_probs = []
+  sparsities = [0, 25, 50, 60, 70, 80, 90, 95, 97, 99]
 
-  pruning = 'weight'
-  #values = eval(sess, mnist, keep_prob, x, y_conv, y_, pruning)
-  #for value in values:
-  #    get_mean(value[1])
+  for pruning in prunings:
+      for sparsity in sparsities:
+          sess = tf.InteractiveSession()
+          sess.run(tf.global_variables_initializer())
+          if pruning == "weight":
+              weight_pruning(sess, sparsity)
+              prob = eval(mnist, keep_prob, x, y_, accuracy)
+              weight_pruning_probs.append((sparsity, prob))
+          if pruning == "l2":
+              l2_pruning(sess, sparsity)
+              prob = eval(mnist, keep_prob, x, y_, accuracy)
+              l2_pruning_probs.append((sparsity, prob))
 
-
+  print(weight_pruning_probs)
+  print(l2_pruning_probs)
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser()
