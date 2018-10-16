@@ -165,11 +165,9 @@ def eval(mnist, keep_prob, x, y_, accuracy):
     prob = accuracy.eval(feed_dict={x: eval_data, y_: eval_labels, keep_prob: 1.0})
     return prob
 
-
 def main(_):
   # Import data
   mnist = input_data.read_data_sets(FLAGS.data_dir)
-
   # Create the model
   x = tf.placeholder(tf.float32, [None, 784])
 
@@ -178,24 +176,23 @@ def main(_):
 
   # Build the graph for the deep net
   y_conv, keep_prob = deepnn(x)
+  with tf.name_scope('loss'):
+      cross_entropy = tf.losses.sparse_softmax_cross_entropy(
+            labels=y_, logits=y_conv)
+      cross_entropy = tf.reduce_mean(cross_entropy)
 
-  cross_entropy = tf.losses.sparse_softmax_cross_entropy(
-        labels=y_, logits=y_conv)
-  cross_entropy = tf.reduce_mean(cross_entropy)
+  with tf.name_scope('adam_optimizer'):
+    train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
 
-
-  train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
-
-  correct_prediction = tf.equal(tf.argmax(y_conv, 1), y_)
-  correct_prediction = tf.cast(correct_prediction, tf.float32)
-  accuracy = tf.reduce_mean(correct_prediction)
+  with tf.name_scope('accuracy'):
+      correct_prediction = tf.equal(tf.argmax(y_conv, 1), y_)
+      correct_prediction = tf.cast(correct_prediction, tf.float32)
+      accuracy = tf.reduce_mean(correct_prediction)
 
   graph_location = tempfile.mkdtemp()
   print('Saving graph to: %s' % graph_location)
   train_writer = tf.summary.FileWriter(graph_location)
   train_writer.add_graph(tf.get_default_graph())
-
-  #train(mnist, accuracy, keep_prob, train_step, x, y_)
 
   prunings = ['weight', 'l2']
   weight_pruning_probs = []
@@ -204,16 +201,37 @@ def main(_):
 
   for pruning in prunings:
       for sparsity in sparsities:
-          sess = tf.InteractiveSession()
-          sess.run(tf.global_variables_initializer())
           if pruning == "weight":
-              weight_pruning(sess, sparsity)
-              prob = eval(mnist, keep_prob, x, y_, accuracy)
-              weight_pruning_probs.append((sparsity, prob))
+              init = tf.global_variables_initializer()
+              with tf.Session() as sess:
+                  sess.run(init)
+                  train(mnist, accuracy, keep_prob, train_step, x, y_)
+                  weight_pruning(sess, sparsity)
+                  prob = eval(mnist, keep_prob, x, y_, accuracy)
+                  weight_pruning_probs.append((sparsity, prob))
           if pruning == "l2":
-              l2_pruning(sess, sparsity)
-              prob = eval(mnist, keep_prob, x, y_, accuracy)
-              l2_pruning_probs.append((sparsity, prob))
+              init = tf.global_variables_initializer()
+              with tf.Session() as sess:
+                  sess.run(init)
+                  train(mnist, accuracy, keep_prob, train_step, x, y_)
+                  l2_pruning(sess, sparsity)
+                  prob = eval(mnist, keep_prob, x, y_, accuracy)
+                  l2_pruning_probs.append((sparsity, prob))
+
+  print(weight_pruning_probs)
+  print(l2_pruning_probs)
+
+  for sprs in weight_pruning_probs:
+      plt.scatter(sprs[0], sprs[1])
+  plt.xlabel("sparsity")
+  plt.ylabel("probability")
+  plt.show()
+
+  for sprs in l2_pruning_probs:
+      plt.scatter(sprs[0], sprs[1])
+  plt.xlabel("sparsity")
+  plt.ylabel("probability")
+  plt.show()
 
   print(weight_pruning_probs)
   print(l2_pruning_probs)
