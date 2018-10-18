@@ -8,10 +8,14 @@ https://www.tensorflow.org/get_started/mnist/pros
 """
 
 import sys
+import os
 import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 import numpy as np
 import matplotlib.pyplot as plt
+
+# hide TensorFlow log
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 FLAGS = tf.app.flags.FLAGS
 tf.flags.DEFINE_string("input_dir", "data/", "input directory")
@@ -71,24 +75,23 @@ def weight_pruning(sess, sparsity):
     shape = tf.shape(w)
     size = tf.reduce_prod(shape)
 
-    # flatten and abs
     flatten = tf.reshape(w, shape=[size])
     magnitude = tf.abs(flatten)
     k = tf.cast(
-        tf.cast(size, dtype=tf.float32) * sparsity / 100, dtype=tf.int32)
+        tf.cast(size, dtype=tf.float32) * (1 - sparsity / 100), dtype=tf.int32)
 
-    # get bottom k
-    bottom_k = tf.nn.top_k(-magnitude, k=k)
+    # get top k
+    top_k = tf.nn.top_k(magnitude, k=k)
 
     # get the mask from the bottm_k indices
     mask = tf.sparse_to_dense(
-        bottom_k.indices,
+        top_k.indices,
         output_shape=[size],
         sparse_values=1.0,
         default_value=0.0,
         validate_indices=False)
     # set bottom k indexes to 0
-    new = tf.reshape(tf.multiply(flatten, 1 - mask), shape=shape)
+    new = tf.reshape(tf.multiply(flatten, mask), shape=shape)
 
     # assign new matrix to weight
     sess.run(tf.assign(w, new))
@@ -186,15 +189,23 @@ def main(_):
   l2_pruning_probs = []
   sparsities = [0, 25, 50, 60, 70, 80, 90, 95, 97, 99]
 
+  saver = tf.train.Saver()
+
+  with tf.Session() as sess:
+    sess.run(tf.global_variables_initializer())
+    train(mnist, accuracy, train_step, x, y_)
+    saved_path = saver.save(sess, os.path.join(FLAGS.output_dir, 'model.ckpt'))
+    print("saved model at %s\n" % saved_path)
+
   for pruning in prunings:
     for sparsity in sparsities:
       if pruning == "weight":
         with tf.Session() as sess:
-          sess.run(tf.global_variables_initializer())
-          train(mnist, accuracy, train_step, x, y_)
+          saver.restore(sess, saved_path)
+          print("restored model from %s" % saved_path)
           weight_pruning(sess, sparsity)
           prob = eval(mnist, x, y_, accuracy)
-          print('test accuracy %g sparsity %d\n\n' % (prob, sparsity))
+          print('test accuracy %g sparsity %d\n' % (prob, sparsity))
           weight_pruning_probs.append((sparsity, prob))
       else:
         exit()
