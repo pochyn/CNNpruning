@@ -113,16 +113,17 @@ def l2_pruning(sess, sparsity):
     flatten = tf.reshape(w, shape=[size])
 
     k = tf.cast(
-      tf.cast(shape[1], dtype=tf.float32) * (1 - sparsity / 100), dtype=tf.int32)
+        tf.cast(shape[1], dtype=tf.float32) * (1 - sparsity / 100),
+        dtype=tf.int32)
 
     norms = tf.norm(w, ord=2, axis=0)
     top_k = tf.nn.top_k(norms, k=k)
     mask = tf.sparse_to_dense(
-      top_k.indices,
-      output_shape=[tf.cast(shape[1], dtype=tf.int32)],
-      sparse_values=1.0,
-      default_value=0.0,
-      validate_indices=False)
+        top_k.indices,
+        output_shape=[tf.cast(shape[1], dtype=tf.int32)],
+        sparse_values=1.0,
+        default_value=0.0,
+        validate_indices=False)
 
     sparsed = tf.multiply(w, mask)
     sess.run(tf.assign(w, sparsed))
@@ -195,10 +196,10 @@ def main(_):
     saved_path = saver.save(sess, os.path.join(FLAGS.output_dir, 'model.ckpt'))
     print("saved model at %s\n" % saved_path)
 
-  saved_path = "runs/model.ckpt"
   for pruning in prunings:
-    for sparsity in sparsities:
-      if pruning == "weight":
+    print("%s pruning" % pruning)
+    if pruning == "weight":
+      for sparsity in sparsities:
         with tf.Session() as sess:
           saver.restore(sess, saved_path)
           print("restored model from %s" % saved_path)
@@ -206,20 +207,15 @@ def main(_):
           prob = eval(mnist, x, y_, accuracy)
           print('test accuracy %g sparsity %d\n' % (prob, sparsity))
           weight_pruning_probs.append((sparsity, prob))
-      else:
-        #exit()
-
-        if pruning == "l2":
-          with tf.Session() as sess:
-            saver.restore(sess, saved_path)
-            print("restored model from %s" % saved_path)
-            l2_pruning(sess, sparsity)
-            prob = eval(mnist, x, y_, accuracy)
-            print('test accuracy %g sparsity %d\n' % (prob, sparsity))
-            l2_pruning_probs.append((sparsity, prob))
-
-  print(weight_pruning_probs)
-  print(l2_pruning_probs)
+    else:
+      for sparsity in sparsities:
+        with tf.Session() as sess:
+          saver.restore(sess, saved_path)
+          print("restored model from %s" % saved_path)
+          l2_pruning(sess, sparsity)
+          prob = eval(mnist, x, y_, accuracy)
+          print('test accuracy %g sparsity %d\n' % (prob, sparsity))
+          l2_pruning_probs.append((sparsity, prob))
 
   for sprs in weight_pruning_probs:
     plt.scatter(sprs[0], sprs[1])
@@ -232,9 +228,6 @@ def main(_):
   plt.xlabel("sparsity")
   plt.ylabel("probability")
   plt.show()
-
-  print(weight_pruning_probs)
-  print(l2_pruning_probs)
 
 
 if __name__ == '__main__':
