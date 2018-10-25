@@ -100,34 +100,32 @@ def weight_pruning(sess, sparsity):
 def l2_pruning(sess, sparsity):
   """l2 norm prunning"""
 
-  # get all trained variables
-  all_variables = tf.global_variables()
-  all_values = sess.run(all_variables)
+  layers = ['dense_layer1', 'dense_layer2', 'dense_layer3', 'dense_layer4']
 
-  for var, val in zip(all_variables, all_values):
-    if "layer5" not in var.name:
-      matrix = np.array(val)
-      if matrix.shape != ():
+  for layer in layers:
+    # get trained variable
+    with tf.variable_scope(layer, reuse=tf.AUTO_REUSE):
+      w = tf.get_variable(name="weight")
 
-        #sizes
-        x = matrix.shape[0]
-        y = matrix.shape[1]
+    shape = tf.shape(w)
+    size = tf.reduce_prod(shape)
 
-        #find indeces of columns with smallest L2-norm value
-        i = 0
-        all_norms = []
-        while i < y:
-          all_norms.append(np.linalg.norm(matrix[:, i], ord=2))
-          i += 1
-        number_of_values = int((y * sparsity) / 100)
-        idx = np.argpartition(all_norms, number_of_values)
+    flatten = tf.reshape(w, shape=[size])
 
-        #set columns with smallest l2-norm to zero
-        for index in idx[0:number_of_values]:
-          matrix[:, index] = 0
+    k = tf.cast(
+      tf.cast(shape[1], dtype=tf.float32) * (1 - sparsity / 100), dtype=tf.int32)
 
-        initial = tf.reshape(matrix, [x, y])
-        tf.assign(var, initial)
+    norms = tf.norm(w, ord=2, axis=0)
+    top_k = tf.nn.top_k(norms, k=k)
+    mask = tf.sparse_to_dense(
+      top_k.indices,
+      output_shape=[tf.cast(shape[1], dtype=tf.int32)],
+      sparse_values=1.0,
+      default_value=0.0,
+      validate_indices=False)
+
+    sparsed = tf.multiply(w, mask)
+    sess.run(tf.assign(w, sparsed))
 
 
 # training on mnist dataset when run first time
@@ -197,6 +195,7 @@ def main(_):
     saved_path = saver.save(sess, os.path.join(FLAGS.output_dir, 'model.ckpt'))
     print("saved model at %s\n" % saved_path)
 
+  saved_path = "runs/model.ckpt"
   for pruning in prunings:
     for sparsity in sparsities:
       if pruning == "weight":
@@ -208,15 +207,16 @@ def main(_):
           print('test accuracy %g sparsity %d\n' % (prob, sparsity))
           weight_pruning_probs.append((sparsity, prob))
       else:
-        exit()
-      # if pruning == "l2":
-      #   init = tf.global_variables_initializer()
-      #   with tf.Session() as sess:
-      #     sess.run(init)
-      #     train(mnist, accuracy, train_step, x, y_)
-      #     l2_pruning(sess, sparsity)
-      #     prob = eval(mnist, x, y_, accuracy)
-      #     l2_pruning_probs.append((sparsity, prob))
+        #exit()
+
+        if pruning == "l2":
+          with tf.Session() as sess:
+            saver.restore(sess, saved_path)
+            print("restored model from %s" % saved_path)
+            l2_pruning(sess, sparsity)
+            prob = eval(mnist, x, y_, accuracy)
+            print('test accuracy %g sparsity %d\n' % (prob, sparsity))
+            l2_pruning_probs.append((sparsity, prob))
 
   print(weight_pruning_probs)
   print(l2_pruning_probs)
